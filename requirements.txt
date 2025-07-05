@@ -3,3 +3,4 @@ openai
 python-docx
 pillow
 pymupdf
+fpdf
