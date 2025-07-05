@@ -1,5 +1,5 @@
 
-# Final Wound Audit Tool with Full Compliance Logic (No L39865)
+# Final Wound Audit Tool with Unicode-safe PDF Output and Full Compliance Logic (No L39865)
 
 import streamlit as st
 import openai
@@ -9,12 +9,11 @@ import fitz
 from fpdf import FPDF
 import tempfile
 import base64
-import datetime
 
 client = openai.OpenAI()
 
 st.set_page_config(page_title="CMS-Compliant Wound Audit Tool", layout="wide")
-st.title("📋 CMS-Grade Wound Documentation Auditor")
+st.title("CMS-Grade Wound Documentation Auditor")
 
 st.markdown("""
 This tool performs:
@@ -55,6 +54,31 @@ if image_file:
     st.image(image, caption="Uploaded Wound Image", use_column_width=True)
     image_context = "Wound image provided. Include granulation, exudate, and anatomical features in your analysis."
 
+def clean_text(text):
+    return (
+        text.replace("•", "-")
+            .replace("–", "-")
+            .replace("—", "-")
+            .replace("“", '"')
+            .replace("”", '"')
+            .replace("’", "'")
+            .replace("✅", "")
+            .replace("🚨", "")
+            .replace("📋", "")
+            .replace("📄", "")
+    )
+
+def generate_pdf(content):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=11)
+    safe_content = clean_text(content)
+    for line in safe_content.splitlines():
+        pdf.multi_cell(0, 8, line)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
+        pdf.output(tmpfile.name)
+        return tmpfile.name
+
 def build_prompt(note_set, image_data=""):
     combined_text = "\n---\n".join(note_set)
     return [
@@ -73,16 +97,6 @@ def build_prompt(note_set, image_data=""):
         )},
         {"role": "user", "content": image_data + "\n" + combined_text}
     ]
-
-def generate_pdf(content):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=11)
-    for line in content.splitlines():
-        pdf.multi_cell(0, 8, line)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
-        pdf.output(tmpfile.name)
-        return tmpfile.name
 
 if st.button("🚨 Run Audit & Generate PDF") and notes:
     with st.spinner("Running audit and compiling report..."):
