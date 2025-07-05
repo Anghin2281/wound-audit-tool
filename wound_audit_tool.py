@@ -1,5 +1,5 @@
 
-# Wound Audit Tool with CMS Compliance, TIMERS Framework, and Structured PDF Output (No Emoji)
+# Wound Audit Tool with Note Reference Identifiers and Structured CMS Audit
 
 import streamlit as st
 import openai
@@ -23,6 +23,7 @@ This tool performs:
 - Graft eligibility and layer recommendation
 - Diagnosis-treatment-medication validation
 - Infection treatment alignment
+- Identifies and labels each uploaded note (Note 1, Note 2, etc.) for audit reference
 - Structured PDF output with sections:
   1. What is documented correctly
   2. What is missing
@@ -34,17 +35,17 @@ image_file = st.file_uploader("Optional: Upload Wound Image", type=["jpg", "jpeg
 
 notes = []
 if uploaded_files:
-    for file in uploaded_files:
-        content = ""
+    for idx, file in enumerate(uploaded_files):
+        content = f"Note {idx+1} - File Name: {file.name}\n"
         if file.type == "application/pdf":
             doc = fitz.open(stream=file.read(), filetype="pdf")
             for page in doc:
                 content += page.get_text()
         elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
             docx_doc = Document(file)
-            content = "\n".join([para.text for para in docx_doc.paragraphs])
+            content += "\n".join([para.text for para in docx_doc.paragraphs])
         elif file.type == "text/plain":
-            content = file.read().decode("utf-8")
+            content += file.read().decode("utf-8")
         notes.append(content)
 
 image_context = ""
@@ -97,6 +98,8 @@ Report should be divided into three sections:
 1. What is documented correctly
 2. What is missing
 3. Suggestions for corrections or rewording
+
+Reference each note by its file name and order (Note 1, Note 2, etc.) to track findings clearly.
 '''
         )},
         {"role": "user", "content": image_data + "\n" + combined_text}
