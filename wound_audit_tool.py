@@ -1,5 +1,5 @@
 
-# Wound Audit Tool with Unicode-safe PDF and TIMERS Evaluation
+# Wound Audit Tool with CMS Compliance, TIMERS Framework, and Structured PDF Output (No Emoji)
 
 import streamlit as st
 import openai
@@ -18,16 +18,18 @@ st.title("CMS-Grade Wound Documentation Auditor")
 st.markdown("""
 This tool performs:
 - CMS-compliant audits (L35125, L35041, A56696)
-- Deep TIMERS keyword detection: Tissue, Infection, Moisture, Edge, Regeneration, Social
-- Flags missing TIMERS elements with verbiage suggestions
-- Calculates healing % (L×W×D) across notes
-- Validates graft use, dressing match, diagnosis-treatment alignment
-- Generates provider-ready PDF with corrections + TIMERS evaluation
-
-❌ Excludes LCD L39865.
+- TIMERS framework keyword detection and documentation analysis
+- Healing percentage calculation based on wound volume
+- Graft eligibility and layer recommendation
+- Diagnosis-treatment-medication validation
+- Infection treatment alignment
+- Structured PDF output with sections:
+  1. What is documented correctly
+  2. What is missing
+  3. Suggestions for corrections and rewording
 """)
 
-uploaded_files = st.file_uploader("Upload 1–4 Wound Notes (.pdf, .docx, .txt)", type=["pdf", "docx", "txt"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload 1 to 4 Wound Notes (.pdf, .docx, .txt)", type=["pdf", "docx", "txt"], accept_multiple_files=True)
 image_file = st.file_uploader("Optional: Upload Wound Image", type=["jpg", "jpeg", "png"])
 
 notes = []
@@ -55,8 +57,6 @@ def clean_text(text):
     return (
         text.replace("•", "-").replace("–", "-").replace("—", "-")
             .replace("“", '"').replace("”", '"').replace("’", "'")
-            .replace("✓", "Yes").replace("⚠️", "Warning")
-            .replace("📄", "").replace("✅", "").replace("🚨", "")
     )
 
 def generate_pdf(content):
@@ -77,27 +77,32 @@ def build_prompt(note_set, image_data=""):
     combined_text = "\n---\n".join(note_set)
     return [
         {"role": "system", "content": (
-            '''You are a CMS wound documentation auditor. Use L35125, L35041, A56696 to audit notes. 
-Apply TIMERS framework deeply:
+            '''You are a CMS wound documentation auditor. Use L35125, L35041, and A56696. 
+Apply the TIMERS framework:
 - T: Debridement, necrosis, granulation, tissue types
-- I: Inflammation, biofilm, infection treatment
-- M: Moisture level, drainage type, matching dressing
-- E: Edge description (epibole, undermining, epithelial advance)
-- R: Regeneration: granulation %, grafts, NPWT use
-- S: Social context: caregiver, living condition, education, compliance
-Check for specific TIMERS language. Flag missing items and suggest corrected phrases. 
-Also calculate healing %, track wound progression, and check dressing and graft match.
-Output:
-1. Documented vs Missing TIMERS elements (Yes/Warning)
-2. Suggested TIMERS documentation wording
-3. Graft eligibility + healing %
-4. Final CMS compliance rating
-5. PDF-style provider summary'''
+- I: Infection or inflammation, antibiotic/antiseptic use
+- M: Moisture balance, drainage type and dressing choice
+- E: Edge of wound, epibole, migration, undermining
+- R: Regeneration: granulation progress, graft application
+- S: Social context: caregiver support, barriers to care
+
+Audit for:
+- Healing percentage based on wound volume (LxWxD)
+- Eligibility for skin substitutes
+- Appropriateness of dressing for wound type
+- Infection diagnosis and whether treatment was documented and appropriate
+- Consistency across multiple visits (healing trajectory)
+
+Report should be divided into three sections:
+1. What is documented correctly
+2. What is missing
+3. Suggestions for corrections or rewording
+'''
         )},
         {"role": "user", "content": image_data + "\n" + combined_text}
     ]
 
-if st.button("Run Audit & Generate PDF") and notes:
+if st.button("Run Audit and Generate PDF") and notes:
     with st.spinner("Auditing and generating PDF..."):
         prompt = build_prompt(notes, image_context)
         response = client.chat.completions.create(model="gpt-4o", messages=prompt)
@@ -109,7 +114,7 @@ if st.button("Run Audit & Generate PDF") and notes:
         pdf_path = generate_pdf(audit_result)
         with open(pdf_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-            download_link = f'<a href="data:application/octet-stream;base64,{b64}" download="Wound_Audit_TIMERS_Report.pdf">Download PDF Report</a>'
+            download_link = f'<a href="data:application/octet-stream;base64,{b64}" download="Wound_Audit_Report.pdf">Download PDF Report</a>'
             st.markdown(download_link, unsafe_allow_html=True)
 else:
-    st.info("Upload 1–4 wound care documents and click to begin.")
+    st.info("Upload wound care notes and click to begin.")
