@@ -1,5 +1,5 @@
 
-# Wound Audit Tool with Full TIMERS Verbiage Evaluation and CMS Compliance
+# Wound Audit Tool with Unicode-safe PDF and TIMERS Evaluation
 
 import streamlit as st
 import openai
@@ -55,7 +55,8 @@ def clean_text(text):
     return (
         text.replace("•", "-").replace("–", "-").replace("—", "-")
             .replace("“", '"').replace("”", '"').replace("’", "'")
-            .replace("✅", "").replace("🚨", "").replace("📋", "").replace("📄", "")
+            .replace("✓", "Yes").replace("⚠️", "Warning")
+            .replace("📄", "").replace("✅", "").replace("🚨", "")
     )
 
 def generate_pdf(content):
@@ -64,7 +65,10 @@ def generate_pdf(content):
     pdf.set_font("Arial", size=11)
     safe_content = clean_text(content)
     for line in safe_content.splitlines():
-        pdf.multi_cell(0, 8, line)
+        try:
+            pdf.multi_cell(0, 8, line)
+        except UnicodeEncodeError:
+            pdf.multi_cell(0, 8, line.encode("latin-1", "replace").decode("latin-1"))
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
         pdf.output(tmpfile.name)
         return tmpfile.name
@@ -84,7 +88,7 @@ Apply TIMERS framework deeply:
 Check for specific TIMERS language. Flag missing items and suggest corrected phrases. 
 Also calculate healing %, track wound progression, and check dressing and graft match.
 Output:
-1. Documented vs Missing TIMERS elements (✓/⚠️)
+1. Documented vs Missing TIMERS elements (Yes/Warning)
 2. Suggested TIMERS documentation wording
 3. Graft eligibility + healing %
 4. Final CMS compliance rating
@@ -94,7 +98,7 @@ Output:
     ]
 
 if st.button("Run Audit & Generate PDF") and notes:
-    with st.spinner("Auditing and analyzing TIMERS compliance..."):
+    with st.spinner("Auditing and generating PDF..."):
         prompt = build_prompt(notes, image_context)
         response = client.chat.completions.create(model="gpt-4o", messages=prompt)
         audit_result = response.choices[0].message.content
