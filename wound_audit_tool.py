@@ -73,49 +73,22 @@ def build_prompt(note_set, image_data=""):
     combined_text = "\n---\n".join(note_set)
     return [
         {"role": "system", "content": (
-            "You are a CMS wound documentation auditor. Use L35125, L35041, A56696 to audit notes. "
-            """Apply TIMERS framework deeply:
+            '''You are a CMS wound documentation auditor. Use L35125, L35041, A56696 to audit notes. 
+Apply TIMERS framework deeply:
 - T: Debridement, necrosis, granulation, tissue types
 - I: Inflammation, biofilm, infection treatment
 - M: Moisture level, drainage type, matching dressing
 - E: Edge description (epibole, undermining, epithelial advance)
 - R: Regeneration: granulation %, grafts, NPWT use
 - S: Social context: caregiver, living condition, education, compliance
-Check for specific TIMERS language. Flag missing items and suggest corrected phrases.
+Check for specific TIMERS language. Flag missing items and suggest corrected phrases. 
 Also calculate healing %, track wound progression, and check dressing and graft match.
 Output:
 1. Documented vs Missing TIMERS elements (✓/⚠️)
 2. Suggested TIMERS documentation wording
 3. Graft eligibility + healing %
 4. Final CMS compliance rating
-5. PDF-style provider summary"""
-
-"
-            "- T: Debridement, necrosis, granulation, tissue types
-"
-            "- I: Inflammation, biofilm, infection treatment
-"
-            "- M: Moisture level, drainage type, matching dressing
-"
-            "- E: Edge description (epibole, undermining, epithelial advance)
-"
-            "- R: Regeneration: granulation %, grafts, NPWT use
-"
-            "- S: Social context: caregiver, living condition, education, compliance
-"
-            "Check for specific TIMERS language. Flag missing items and suggest corrected phrases. "
-            "Also calculate healing %, track wound progression, and check dressing and graft match. "
-            "Output:
-"
-            "1. Documented vs Missing TIMERS elements (✓/⚠️)
-"
-            "2. Suggested TIMERS documentation wording
-"
-            "3. Graft eligibility + healing %
-"
-            "4. Final CMS compliance rating
-"
-            "5. PDF-style provider summary"
+5. PDF-style provider summary'''
         )},
         {"role": "user", "content": image_data + "\n" + combined_text}
     ]
