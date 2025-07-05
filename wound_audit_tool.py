@@ -1,5 +1,5 @@
 
-# Wound Audit Tool with TIMERS, Measurable Outcomes, and CMS Compliance
+# Wound Audit Tool with Full TIMERS Verbiage Evaluation and CMS Compliance
 
 import streamlit as st
 import openai
@@ -18,18 +18,16 @@ st.title("CMS-Grade Wound Documentation Auditor")
 st.markdown("""
 This tool performs:
 - CMS-compliant audits (L35125, L35041, A56696)
-- TIMERS framework comparison (Tissue, Infection, Moisture, Edge, Regeneration, Social)
-- Healing % calculation from wound volume
-- Graft qualification & layer recommendation
-- Dressing validation
-- Diagnosis-treatment-medication matching
-- Infection treatment evaluation
-- PDF correction report generation
+- Deep TIMERS keyword detection: Tissue, Infection, Moisture, Edge, Regeneration, Social
+- Flags missing TIMERS elements with verbiage suggestions
+- Calculates healing % (L×W×D) across notes
+- Validates graft use, dressing match, diagnosis-treatment alignment
+- Generates provider-ready PDF with corrections + TIMERS evaluation
 
 ❌ Excludes LCD L39865.
 """)
 
-uploaded_files = st.file_uploader("Upload 1–4 Wound Care Notes (.pdf, .docx, .txt)", type=["pdf", "docx", "txt"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload 1–4 Wound Notes (.pdf, .docx, .txt)", type=["pdf", "docx", "txt"], accept_multiple_files=True)
 image_file = st.file_uploader("Optional: Upload Wound Image", type=["jpg", "jpeg", "png"])
 
 notes = []
@@ -51,20 +49,13 @@ image_context = ""
 if image_file:
     image = Image.open(image_file)
     st.image(image, caption="Uploaded Wound Image", use_column_width=True)
-    image_context = "Wound image provided. Include granulation, exudate, depth, and anatomical features in your audit."
+    image_context = "Wound image provided. Include granulation, exudate, depth, and anatomical features."
 
 def clean_text(text):
     return (
-        text.replace("•", "-")
-            .replace("–", "-")
-            .replace("—", "-")
-            .replace("“", '"')
-            .replace("”", '"')
-            .replace("’", "'")
-            .replace("✅", "")
-            .replace("🚨", "")
-            .replace("📋", "")
-            .replace("📄", "")
+        text.replace("•", "-").replace("–", "-").replace("—", "-")
+            .replace("“", '"').replace("”", '"').replace("’", "'")
+            .replace("✅", "").replace("🚨", "").replace("📋", "").replace("📄", "")
     )
 
 def generate_pdf(content):
@@ -82,25 +73,40 @@ def build_prompt(note_set, image_data=""):
     combined_text = "\n---\n".join(note_set)
     return [
         {"role": "system", "content": (
-            "You are a CMS wound documentation audit expert. Evaluate notes using L35125, L35041, and A56696. "
-            "Compare to the TIMERS framework: Tissue, Infection, Moisture, Edge, Regeneration, Social context. "
-            "Evaluate measurable outcomes: calculate healing % (LxWxD), check if <30% healing in 4 weeks, granulation progress, depth change. "
-            "Check dressing type vs exudate. Validate diagnosis, treatment, medication match. "
-            "If CTP is used, check documentation, lot#, frequency, and if healing trajectory supports continued use. "
-            "Give a report with:\n"
-            "1. What is correct\n"
-            "2. What is missing\n"
-            "3. TIMERS element flags (✓ or ⚠️)\n"
-            "4. Healing percentage & graft eligibility\n"
-            "5. Recommended dressing & graft layer\n"
-            "6. Final CMS compliance score\n"
-            "7. PDF-style corrections"
+            "You are a CMS wound documentation auditor. Use L35125, L35041, A56696 to audit notes. "
+            "Apply TIMERS framework deeply: 
+"
+            "- T: Debridement, necrosis, granulation, tissue types
+"
+            "- I: Inflammation, biofilm, infection treatment
+"
+            "- M: Moisture level, drainage type, matching dressing
+"
+            "- E: Edge description (epibole, undermining, epithelial advance)
+"
+            "- R: Regeneration: granulation %, grafts, NPWT use
+"
+            "- S: Social context: caregiver, living condition, education, compliance
+"
+            "Check for specific TIMERS language. Flag missing items and suggest corrected phrases. "
+            "Also calculate healing %, track wound progression, and check dressing and graft match. "
+            "Output:
+"
+            "1. Documented vs Missing TIMERS elements (✓/⚠️)
+"
+            "2. Suggested TIMERS documentation wording
+"
+            "3. Graft eligibility + healing %
+"
+            "4. Final CMS compliance rating
+"
+            "5. PDF-style provider summary"
         )},
         {"role": "user", "content": image_data + "\n" + combined_text}
     ]
 
 if st.button("Run Audit & Generate PDF") and notes:
-    with st.spinner("Auditing and generating PDF..."):
+    with st.spinner("Auditing and analyzing TIMERS compliance..."):
         prompt = build_prompt(notes, image_context)
         response = client.chat.completions.create(model="gpt-4o", messages=prompt)
         audit_result = response.choices[0].message.content
@@ -111,7 +117,7 @@ if st.button("Run Audit & Generate PDF") and notes:
         pdf_path = generate_pdf(audit_result)
         with open(pdf_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-            download_link = f'<a href="data:application/octet-stream;base64,{b64}" download="Wound_Audit_Report.pdf">Download PDF Report</a>'
+            download_link = f'<a href="data:application/octet-stream;base64,{b64}" download="Wound_Audit_TIMERS_Report.pdf">Download PDF Report</a>'
             st.markdown(download_link, unsafe_allow_html=True)
 else:
-    st.info("Upload wound care documents and click to begin.")
+    st.info("Upload 1–4 wound care documents and click to begin.")
