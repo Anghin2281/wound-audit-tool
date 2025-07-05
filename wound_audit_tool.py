@@ -1,5 +1,5 @@
 
-# Final Wound Audit Tool with Unicode-safe PDF Output and Full Compliance Logic (No L39865)
+# Wound Audit Tool with TIMERS, Measurable Outcomes, and CMS Compliance
 
 import streamlit as st
 import openai
@@ -12,26 +12,25 @@ import base64
 
 client = openai.OpenAI()
 
-st.set_page_config(page_title="CMS-Compliant Wound Audit Tool", layout="wide")
+st.set_page_config(page_title="Wound Documentation Auditor", layout="wide")
 st.title("CMS-Grade Wound Documentation Auditor")
 
 st.markdown("""
 This tool performs:
 - CMS-compliant audits (L35125, L35041, A56696)
-- Multi-note comparison (up to 4 uploads)
+- TIMERS framework comparison (Tissue, Infection, Moisture, Edge, Regeneration, Social)
 - Healing % calculation from wound volume
-- Graft qualification analysis
-- Graft layer recommendations
+- Graft qualification & layer recommendation
 - Dressing validation
 - Diagnosis-treatment-medication matching
-- Infection identification
+- Infection treatment evaluation
 - PDF correction report generation
 
-❌ L39865 (WPS) logic is excluded.
+❌ Excludes LCD L39865.
 """)
 
-uploaded_files = st.file_uploader("📁 Upload 1–4 Wound Care Notes (.pdf, .docx, .txt)", type=["pdf", "docx", "txt"], accept_multiple_files=True)
-image_file = st.file_uploader("Optional: Upload Wound Image (.jpg, .png)", type=["jpg", "jpeg", "png"])
+uploaded_files = st.file_uploader("Upload 1–4 Wound Care Notes (.pdf, .docx, .txt)", type=["pdf", "docx", "txt"], accept_multiple_files=True)
+image_file = st.file_uploader("Optional: Upload Wound Image", type=["jpg", "jpeg", "png"])
 
 notes = []
 if uploaded_files:
@@ -52,7 +51,7 @@ image_context = ""
 if image_file:
     image = Image.open(image_file)
     st.image(image, caption="Uploaded Wound Image", use_column_width=True)
-    image_context = "Wound image provided. Include granulation, exudate, and anatomical features in your analysis."
+    image_context = "Wound image provided. Include granulation, exudate, depth, and anatomical features in your audit."
 
 def clean_text(text):
     return (
@@ -83,34 +82,36 @@ def build_prompt(note_set, image_data=""):
     combined_text = "\n---\n".join(note_set)
     return [
         {"role": "system", "content": (
-            "You are a CMS wound documentation audit expert. Evaluate all notes chronologically using L35125, L35041, A56696. "
-            "Check for conservative care, ICD/CPT validity, infection treatment, medication alignment, healing % (LxWxD), and graft eligibility. "
-            "Suggest amniotic graft layer type (single, double, triple, quadruple) per wound characteristics. "
-            "Identify dressing mismatches, diagnosis-treatment inconsistencies, and note copying. "
-            "Generate a report with:\n"
+            "You are a CMS wound documentation audit expert. Evaluate notes using L35125, L35041, and A56696. "
+            "Compare to the TIMERS framework: Tissue, Infection, Moisture, Edge, Regeneration, Social context. "
+            "Evaluate measurable outcomes: calculate healing % (LxWxD), check if <30% healing in 4 weeks, granulation progress, depth change. "
+            "Check dressing type vs exudate. Validate diagnosis, treatment, medication match. "
+            "If CTP is used, check documentation, lot#, frequency, and if healing trajectory supports continued use. "
+            "Give a report with:\n"
             "1. What is correct\n"
             "2. What is missing\n"
-            "3. Suggestions for compliance fixes\n"
+            "3. TIMERS element flags (✓ or ⚠️)\n"
             "4. Healing percentage & graft eligibility\n"
             "5. Recommended dressing & graft layer\n"
-            "6. Final compliance score"
+            "6. Final CMS compliance score\n"
+            "7. PDF-style corrections"
         )},
         {"role": "user", "content": image_data + "\n" + combined_text}
     ]
 
-if st.button("🚨 Run Audit & Generate PDF") and notes:
-    with st.spinner("Running audit and compiling report..."):
+if st.button("Run Audit & Generate PDF") and notes:
+    with st.spinner("Auditing and generating PDF..."):
         prompt = build_prompt(notes, image_context)
         response = client.chat.completions.create(model="gpt-4o", messages=prompt)
         audit_result = response.choices[0].message.content
 
-        st.subheader("📋 Audit Report")
+        st.subheader("Audit Report")
         st.markdown(audit_result)
 
         pdf_path = generate_pdf(audit_result)
         with open(pdf_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-            download_link = f'<a href="data:application/octet-stream;base64,{b64}" download="Wound_Audit_Report.pdf">📥 Download Audit Report PDF</a>'
+            download_link = f'<a href="data:application/octet-stream;base64,{b64}" download="Wound_Audit_Report.pdf">Download PDF Report</a>'
             st.markdown(download_link, unsafe_allow_html=True)
 else:
-    st.info("Upload 1–4 wound care notes and click the button to begin.")
+    st.info("Upload wound care documents and click to begin.")
