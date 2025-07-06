@@ -1,5 +1,5 @@
 
-# Wound Audit Tool with Fixed Multiline Prompt Syntax
+# Final Wound Audit Tool: Full Structured Report with Note Info and Numbered Fixes
 
 import streamlit as st
 import openai
@@ -17,17 +17,18 @@ st.set_page_config(page_title="Wound Documentation Auditor", layout="wide")
 st.title("CMS-Grade Wound Documentation Auditor")
 
 st.markdown("""
-This tool performs CMS-compliant documentation audits using:
-- LCDs L35125 (Novitas), L35041, A56696
+Upload up to 4 wound care notes. This tool audits based on:
+- LCDs L35125, L35041, A56696
 - TIMERS framework
-- Healing trajectory and graft justification
-- Dressing/medication/treatment alignment
-- Infection identification and matching care
+- CMS healing trajectory and graft justification
+- Dressing and infection treatment alignment
 
-Outputs PDF with:
-1. What is documented correctly
-2. What is missing
-3. Numbered suggestions for rewording or improvement
+The downloadable PDF report includes:
+- Note identifiers (patient, date, provider, facility)
+- Three structured audit sections:
+  1. What is documented correctly
+  2. What is missing
+  3. Numbered corrections with suggestions
 """)
 
 uploaded_files = st.file_uploader("Upload 1 to 4 Wound Notes", type=["pdf", "docx", "txt"], accept_multiple_files=True)
@@ -36,36 +37,36 @@ image_file = st.file_uploader("Optional: Upload Wound Image", type=["jpg", "jpeg
 notes = []
 if uploaded_files:
     for idx, file in enumerate(uploaded_files):
-        content = f"Note {idx+1} - File Name: {file.name}\n"
+        content = f"===== NOTE {idx+1} =====\nFile Name: {file.name}\n"
+        raw = ""
         if file.type == "application/pdf":
             doc = fitz.open(stream=file.read(), filetype="pdf")
             for page in doc:
-                content += page.get_text()
+                raw += page.get_text()
         elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
             docx_doc = Document(file)
-            content += "\n".join([para.text for para in docx_doc.paragraphs])
+            raw = "\n".join([para.text for para in docx_doc.paragraphs])
         elif file.type == "text/plain":
-            content += file.read().decode("utf-8")
+            raw = file.read().decode("utf-8")
 
         # Extract identifiers
-        patient = re.search(r"(HILDA GONZALES|Patient:.*|Name:.*)", content)
-        date = re.search(r"Visited on:.*", content)
-        provider = re.search(r"by:.*(NP|MD|DO|PA).*", content)
-        facility = re.search(r"(South Texas Advanced Wound Care|Facility:.*|Clinic:.*)", content)
+        patient = re.search(r"(HILDA GONZALES|Patient[:\s]*[\w\s]+|Name[:\s]*[\w\s]+)", raw)
+        date = re.search(r"Visited on[:\s]*[\w\s\-\d:]+", raw)
+        provider = re.search(r"(by[:\s]*[\w\s,]+(?:NP|MD|DO|PA)[\w\s]*)", raw)
+        facility = re.search(r"(South Texas Advanced Wound Care|Facility[:\s]*[\w\s]+|Clinic[:\s]*[\w\s]+)", raw)
 
-        header = f"\n===== Note {idx + 1} =====\n"
-        if patient: header += f"{patient.group(0)}\n"
-        if date: header += f"{date.group(0)}\n"
-        if provider: header += f"Provider: {provider.group(0)}\n"
-        if facility: header += f"Facility: {facility.group(0)}\n"
+        if patient: content += f"Patient Name: {patient.group(0).strip()}\n"
+        if date: content += f"{date.group(0).strip()}\n"
+        if provider: content += f"Provider: {provider.group(0).strip()}\n"
+        if facility: content += f"Facility: {facility.group(0).strip()}\n"
 
-        notes.append(header + "\n" + content)
+        notes.append(content + "\n" + raw)
 
 image_context = ""
 if image_file:
     image = Image.open(image_file)
     st.image(image, caption="Uploaded Wound Image", use_column_width=True)
-    image_context = "Wound image provided. Consider granulation, exudate, depth, margins."
+    image_context = "Wound image provided. Consider granulation, exudate, margins, and depth."
 
 def clean_text(text):
     return (
@@ -95,24 +96,38 @@ def build_prompt(note_set, image_data=""):
     return [
         {"role": "system", "content": (
             '''You are a CMS wound documentation auditor. Use LCDs L35125, L35041, A56696.
-Apply the TIMERS framework. Evaluate healing trajectory, dressing choice, diagnosis-treatment match,
-infection signs and care alignment. Consider image data if available.
+Apply TIMERS (Tissue, Infection, Moisture, Edge, Regeneration, Social), assess wound healing trajectory, dressing appropriateness, infection-treatment match, and graft justification.
 
-For each note provided, return this exact structure:
+For each note uploaded, return this exact report format:
+
+===== NOTE X =====
+File Name: <uploaded_file>
+Patient Name: <from note>
+Date of Visit: <from note>
+Provider: <from note>
+Facility: <from note>
 
 ===== AUDIT REPORT STRUCTURE START =====
-Section 1: What is documented correctly (bullet points)
-Section 2: What is missing or insufficient (bullet points)
-Section 3: Numbered list of issues with suggested rewording or correction
+Section 1: What is Documented Correctly
+- Item 1
+- Item 2
+
+Section 2: What is Missing or Insufficient
+- Missing item 1
+- Missing item 2
+
+Section 3: Numbered Corrections and Suggested Fixes
+1. Problem - Suggested fix
+2. Problem - Suggested fix
 ===== AUDIT REPORT STRUCTURE END =====
 
-Only use clean plain text. Do not include emojis or special symbols.'''
+Use only plain text. Do not include emojis or formatting codes.'''
         )},
         {"role": "user", "content": image_data + "\n" + joined}
     ]
 
 if st.button("Run Audit and Generate PDF") and notes:
-    with st.spinner("Running structured CMS audit..."):
+    with st.spinner("Running CMS audit..."):
         prompt = build_prompt(notes, image_context)
         response = client.chat.completions.create(model="gpt-4o", messages=prompt)
         audit_result = response.choices[0].message.content
@@ -123,7 +138,7 @@ if st.button("Run Audit and Generate PDF") and notes:
         pdf_path = generate_pdf(audit_result)
         with open(pdf_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-            link = f'<a href="data:application/octet-stream;base64,{b64}" download="Wound_Audit_Structured_Report.pdf">Download PDF Report</a>'
-            st.markdown(link, unsafe_allow_html=True)
+            download_link = f'<a href="data:application/octet-stream;base64,{b64}" download="Wound_Audit_Report.pdf">Download PDF Report</a>'
+            st.markdown(download_link, unsafe_allow_html=True)
 else:
-    st.info("Upload wound notes and click the audit button.")
+    st.info("Upload documentation and click the button to audit.")
