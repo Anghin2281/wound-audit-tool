@@ -20,6 +20,7 @@ uploaded_files = st.file_uploader("Upload Wound Notes", type=["pdf", "docx", "tx
 image_file = st.file_uploader("Optional Wound Image", type=["jpg", "jpeg", "png"])
 
 notes = []
+note_info_headers = []
 if uploaded_files:
     for idx, file in enumerate(uploaded_files):
         content = f"===== NOTE {idx+1} =====\nFile Name: {file.name}\n"
@@ -39,10 +40,12 @@ if uploaded_files:
         provider = re.search(r"(by[:\s]*[\w\s,]+(?:NP|MD|DO|PA)[\w\s]*)", raw)
         facility = re.search(r"(Facility[:\s]*[\w\s]+|Clinic[:\s]*[\w\s]+)", raw)
 
-        if patient: content += f"Patient Name: {patient.group(0).strip()}\n"
-        if date: content += f"{date.group(0).strip()}\n"
-        if provider: content += f"Provider: {provider.group(0).strip()}\n"
-        if facility: content += f"Facility: {facility.group(0).strip()}\n"
+        header = []
+        if patient: header.append(f"Patient: {patient.group(0).strip()}")
+        if date: header.append(f"Date of Visit: {date.group(0).strip()}")
+        if provider: header.append(f"Provider: {provider.group(0).strip()}")
+        if facility: header.append(f"Facility: {facility.group(0).strip()}")
+        note_info_headers.append("\n".join(header))
 
         notes.append(content + "\n" + raw)
 
@@ -72,27 +75,33 @@ def generate_pdf(content):
         pdf.output(tmpfile.name)
         return tmpfile.name
 
-def build_prompt(notes, img="", compare=False):
+def build_prompt(notes, img="", compare=False, headers=None):
     combined = "\n---\n".join(notes)
+    header_text = "\n\n".join(headers) if headers else ""
     instructions = '''You are a CMS wound documentation auditor. Use LCDs L35125, L35041, A56696.
 Evaluate TIMERS, healing trajectory, infection treatment, graft use and conservative care.
-Format output with:
+
+Format report as:
+Top: Patient, Date of Visit, Provider, Facility, CMS Compliance Rating
+
+Then:
 Section 1: What is Documented Correctly
 Section 2: What is Missing or Incorrect (include suggested fix under each)
 Section 3: Numbered List of Issues with Suggested Rewording
-Final: Compliance Rating: Compliant / Partially Compliant / Non-Compliant
+Final: CMS Compliance Rating: Compliant / Partially Compliant / Non-Compliant
 '''
     if compare:
         instructions += "\nCompare notes chronologically. Assess graft continuation or discontinuation across visits."
     return [
         {"role": "system", "content": instructions},
-        {"role": "user", "content": img + "\n" + combined}
+        {"role": "user", "content": header_text + "\n" + img + "\n" + combined}
     ]
 
 if st.button("Run Audit", type="primary") and notes:
     compare = len(notes) > 1
     with st.spinner("Auditing..."):
-        response = client.chat.completions.create(model="gpt-4o", messages=build_prompt(notes, image_context, compare))
+        prompt = build_prompt(notes, image_context, compare, note_info_headers)
+        response = client.chat.completions.create(model="gpt-4o", messages=prompt)
         output = response.choices[0].message.content
         st.markdown(output)
 
