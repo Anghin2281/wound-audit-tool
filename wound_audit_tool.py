@@ -12,17 +12,9 @@ import re
 client = openai.OpenAI()
 
 st.set_page_config(page_title="CMS Wound Audit Tool", layout="wide")
-st.markdown("<h1 style='color:#800000'>CMS-Grade Wound Audit Tool</h1>", unsafe_allow_html=True)
+st.title("CMS-Grade Wound Audit Tool")
 
-st.markdown("""
-Upload 110 wound care documentation files for audit.  
-- 1 file = single CMS audit  
-- 210 files = chronological comparison:  
-  - Consistency across visits  
-  - Healing trajectory  
-  - Graft use qualification/termination  
-  - Compliance rating  
-""")
+st.markdown("Upload 1–10 notes. 1 = individual audit. 2–10 = compare for consistency, compliance, and graft use.")
 
 uploaded_files = st.file_uploader("Upload Wound Notes", type=["pdf", "docx", "txt"], accept_multiple_files=True)
 image_file = st.file_uploader("Optional Wound Image", type=["jpg", "jpeg", "png"])
@@ -58,72 +50,53 @@ image_context = ""
 if image_file:
     image = Image.open(image_file)
     st.image(image, caption="Uploaded Wound Image", use_column_width=True)
-    image_context = "Wound image uploaded. Consider granulation, margins, exudate."
+    image_context = "Image provided. Consider granulation, exudate, tissue state."
 
 def clean_text(text):
     return (
-        text.replace("", "-").replace("", "-").replace("", "-")
-            .replace("", '"').replace("", '"').replace("", "'")
+        text.replace("•", "-").replace("–", "-").replace("—", "-")
+        .replace("“", '"').replace("”", '"').replace("’", "'")
     )
 
 def generate_pdf(content):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=11)
-    safe = clean_text(content)
-    for line in safe.splitlines():
-        if line.strip() == "":
-            pdf.ln()
-        else:
-            try:
-                pdf.multi_cell(0, 8, line)
-            except UnicodeEncodeError:
-                pdf.multi_cell(0, 8, line.encode("latin-1", "replace").decode("latin-1"))
+    lines = clean_text(content).splitlines()
+
+    for line in lines:
+        safe_line = line.encode("latin-1", "replace").decode("latin-1")
+        pdf.multi_cell(0, 8, safe_line)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
         pdf.output(tmpfile.name)
         return tmpfile.name
 
 def build_prompt(notes, img="", compare=False):
-    full = "\n---\n".join(notes)
-    base_instruction = '''
-You are a CMS wound documentation auditor. Use LCDs L35125, L35041, A56696.
-Evaluate TIMERS (Tissue, Infection, Moisture, Edge, Regeneration, Social), wound healing trajectory, graft eligibility, dressing alignment, and medication use.
-
-Return results with:
-- Section 1: What is Documented Correctly
-- Section 2: What is Missing or Incorrect (grouped by type, with fixes)
-- Section 3: Numbered Fixes with Suggested Language
-- Compliance Rating: Compliant / Partially Compliant / Non-Compliant
+    combined = "\n---\n".join(notes)
+    instructions = '''You are a CMS wound documentation auditor. Use LCDs L35125, L35041, A56696.
+Evaluate TIMERS, healing trajectory, infection treatment, graft use and conservative care.
+Format output with:
+Section 1: What is Documented Correctly
+Section 2: What is Missing or Incorrect (include suggested fix under each)
+Section 3: Numbered List of Issues with Suggested Rewording
+Final: Compliance Rating: Compliant / Partially Compliant / Non-Compliant
 '''
     if compare:
-        base_instruction += '''
-Compare all notes chronologically. Ensure documentation improves or adjusts appropriately. Evaluate:
-- Consistency of wound size, healing markers
-- Justification for continued or stopped graft usage
-- Whether healing trajectory supports continued use of CTPs
-
-Flag if wound is improving or not based on CMS definitions. Identify any visit that breaks compliance.
-'''
+        instructions += "\nCompare notes chronologically. Assess graft continuation or discontinuation across visits."
     return [
-        {"role": "system", "content": base_instruction},
-        {"role": "user", "content": img + "\n" + full}
+        {"role": "system", "content": instructions},
+        {"role": "user", "content": img + "\n" + combined}
     ]
 
-run = st.button("Run Audit", type="primary")
-
-if run and notes:
-    compare_mode = len(notes) > 1
+if st.button("Run Audit", type="primary") and notes:
+    compare = len(notes) > 1
     with st.spinner("Auditing..."):
-        prompt = build_prompt(notes, image_context, compare=compare_mode)
-        response = client.chat.completions.create(model="gpt-4o", messages=prompt)
-        result = response.choices[0].message.content
-        st.subheader("Audit Results")
-        st.markdown(result)
+        response = client.chat.completions.create(model="gpt-4o", messages=build_prompt(notes, image_context, compare))
+        output = response.choices[0].message.content
+        st.markdown(output)
 
-        pdf_path = generate_pdf(result)
-        with open(pdf_path, "rb") as f:
+        path = generate_pdf(output)
+        with open(path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-            link = f'<a href="data:application/octet-stream;base64,{b64}" download="Wound_Audit_Report.pdf">Download PDF Report</a>'
-            st.markdown(link, unsafe_allow_html=True)
-else:
-    st.info("Upload 110 documents and click 'Run Audit'.")
+            st.markdown(f'<a href="data:application/octet-stream;base64,{b64}" download="Wound_Audit_Report.pdf">Download PDF Report</a>', unsafe_allow_html=True)
