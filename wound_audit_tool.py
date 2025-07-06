@@ -1,5 +1,5 @@
 
-# Final Wound Audit Tool with Structured PDF Output
+# Wound Audit Tool with Fixed Multiline Prompt Syntax
 
 import streamlit as st
 import openai
@@ -94,24 +94,19 @@ def build_prompt(note_set, image_data=""):
     joined = "\n---\n".join(note_set)
     return [
         {"role": "system", "content": (
-            "You are a CMS wound documentation auditor. Use LCDs L35125, L35041, A56696. "
-            "Apply the TIMERS framework. Evaluate healing trajectory, dressing choice, diagnosis-treatment match, "
-            "infection signs and care alignment. Consider image data if available. "
-            "For each note provided, return this exact structure:
+            '''You are a CMS wound documentation auditor. Use LCDs L35125, L35041, A56696.
+Apply the TIMERS framework. Evaluate healing trajectory, dressing choice, diagnosis-treatment match,
+infection signs and care alignment. Consider image data if available.
 
-"
-            "===== AUDIT REPORT STRUCTURE START =====
-"
-            "Section 1: What is documented correctly (bullet points)
-"
-            "Section 2: What is missing or insufficient (bullet points)
-"
-            "Section 3: Numbered list of issues with suggested rewording or correction
-"
-            "===== AUDIT REPORT STRUCTURE END =====
+For each note provided, return this exact structure:
 
-"
-            "Only use clean plain text. Do not include emojis or special symbols."
+===== AUDIT REPORT STRUCTURE START =====
+Section 1: What is documented correctly (bullet points)
+Section 2: What is missing or insufficient (bullet points)
+Section 3: Numbered list of issues with suggested rewording or correction
+===== AUDIT REPORT STRUCTURE END =====
+
+Only use clean plain text. Do not include emojis or special symbols.'''
         )},
         {"role": "user", "content": image_data + "\n" + joined}
     ]
