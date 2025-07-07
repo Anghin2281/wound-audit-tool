@@ -2,5 +2,6 @@ streamlit
 openai
 python-docx
 pillow
-pymupdf
+PyMuPDF
 fpdf
+pandas
