@@ -70,18 +70,8 @@ def generate_combined_pdf(summary_df, audit_text):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=11)
-    pdf.cell(200, 10, txt="Wound Documentation Summary Table", ln=True, align="C")
-    pdf.ln(10)
-    col_width = 190 / len(summary_df.columns)
-    row_height = 8
-    for col in summary_df.columns:
-        pdf.cell(col_width, row_height, col, border=1)
-    pdf.ln(row_height)
-    for i in range(len(summary_df)):
-        for col in summary_df.columns:
-            text = str(summary_df.iloc[i][col])[:30]
-            pdf.cell(col_width, row_height, text, border=1)
-        pdf.ln(row_height)
+    pdf.multi_cell(0, 8, "Audit Summary:")
+    pdf.ln(5)
     pdf.add_page()
     for line in clean_text(audit_text).splitlines():
         safe = line.encode("latin-1", "replace").decode("latin-1")
@@ -93,8 +83,7 @@ def generate_combined_pdf(summary_df, audit_text):
 def build_prompt(notes, img="", compare=False, headers=None):
     combined = "\n---\n".join(notes)
     header_text = "\n\n".join(headers) if headers else ""
-    instructions = '''
-You are a strict CMS wound documentation auditor using the following guidelines:
+    instructions = """You are a strict CMS wound documentation auditor using the following guidelines:
 - LCD L35125 (Novitas)
 - LCD L35041 (Novitas)
 - A56696 (Billing/Coding for L35041)
@@ -154,8 +143,7 @@ Section 4: Inconsistencies Between Notes
 - Highlight these areas clearly for provider revision
 
 Section 5: Final CMS Compliance Rating (Compliant / Partially Compliant / Non-Compliant)
-=====
-'''
+====="""
     if compare:
         instructions += '\nCompare up to 10 notes over time. Track wound progression. Determine if graft usage is still justified or should stop based on CMS standards.'
     return [
