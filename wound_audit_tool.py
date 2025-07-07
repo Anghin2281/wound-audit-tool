@@ -1,4 +1,3 @@
-
 import streamlit as st
 import openai
 from docx import Document
@@ -8,19 +7,21 @@ from fpdf import FPDF
 import tempfile
 import base64
 import re
+import pandas as pd
 
 client = openai.OpenAI()
 
 st.set_page_config(page_title="CMS LCD-Based Wound Audit Tool", layout="wide")
 st.markdown("<h1 style='color:#800000'>Strict CMS LCD Wound Audit Tool</h1>", unsafe_allow_html=True)
 
-st.markdown("This tool audits wound documentation against CMS LCDs: L35125, L35041, A56696, and L37228.")
+st.markdown("This tool audits wound documentation against CMS LCDs: L35125, L35041, A56696, L37228, L37166, L33831, and article A58565.")
 
 uploaded_files = st.file_uploader("Upload 1–10 Wound Notes", type=["pdf", "docx", "txt"], accept_multiple_files=True)
 image_file = st.file_uploader("Optional Wound Image", type=["jpg", "jpeg", "png"])
 
 notes = []
 note_info_headers = []
+note_summary = []
 if uploaded_files:
     for idx, file in enumerate(uploaded_files):
         content = f"===== NOTE {idx+1} =====\nFile Name: {file.name}\n"
@@ -41,11 +42,18 @@ if uploaded_files:
         facility = re.search(r"(Facility[:\s]*[\w\s]+|Clinic[:\s]*[\w\s]+)", raw)
 
         header = []
-        if patient: header.append(f"Patient: {patient.group(0).strip()}")
-        if date: header.append(f"Date of Visit: {date.group(0).strip()}")
-        if provider: header.append(f"Provider: {provider.group(0).strip()}")
-        if facility: header.append(f"Facility: {facility.group(0).strip()}")
+        p_val = patient.group(0).strip() if patient else "Unknown"
+        d_val = date.group(0).strip() if date else "Unknown"
+        pr_val = provider.group(0).strip() if provider else "Unknown"
+        f_val = facility.group(0).strip() if facility else "Unknown"
+
+        header.append(f"Patient: {p_val}")
+        header.append(f"Date of Visit: {d_val}")
+        header.append(f"Provider: {pr_val}")
+        header.append(f"Facility: {f_val}")
+
         note_info_headers.append("\n".join(header))
+        note_summary.append([file.name, p_val, d_val, pr_val, f_val])
 
         notes.append(content + "\n" + raw)
 
@@ -58,32 +66,65 @@ if image_file:
 def clean_text(text):
     return text.replace("•", "-").replace("–", "-").replace("—", "-").replace("“", '"').replace("”", '"').replace("’", "'")
 
-def generate_pdf(content):
+def generate_combined_pdf(summary_df, audit_text):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=11)
-    for line in clean_text(content).splitlines():
+    pdf.cell(200, 10, txt="Wound Documentation Summary Table", ln=True, align="C")
+    pdf.ln(10)
+    col_width = 190 / len(summary_df.columns)
+    row_height = 8
+    for col in summary_df.columns:
+        pdf.cell(col_width, row_height, col, border=1)
+    pdf.ln(row_height)
+    for i in range(len(summary_df)):
+        for col in summary_df.columns:
+            text = str(summary_df.iloc[i][col])[:30]
+            pdf.cell(col_width, row_height, text, border=1)
+        pdf.ln(row_height)
+    pdf.add_page()
+    for line in clean_text(audit_text).splitlines():
         safe = line.encode("latin-1", "replace").decode("latin-1")
         pdf.multi_cell(0, 8, safe)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
-        pdf.output(tmpfile.name)
-        return tmpfile.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        pdf.output(tmp.name)
+        return tmp.name
 
 def build_prompt(notes, img="", compare=False, headers=None):
     combined = "\n---\n".join(notes)
     header_text = "\n\n".join(headers) if headers else ""
     instructions = '''
-You are a strict CMS wound documentation auditor using only these sources:
+You are a strict CMS wound documentation auditor using the following guidelines:
 - LCD L35125 (Novitas)
-- LCD L35041 (CGS)
-- A56696 (Billing/Coding)
-- LCD L37228 (Wound Care)
+- LCD L35041 (Novitas)
+- A56696 (Billing/Coding for L35041)
+- LCD L37228 (WPS)
+- LCD L37166 (First Coast)
+- LCD L33831 (Surgical Dressings)
+- A58565 (Palmetto Wound and Ulcer Care Article)
 
 Your job is to:
 - Detect exact compliance or missing data
-- Highlight what violates CMS documentation standards
+- Highlight violations of CMS documentation standards
 - Flag failure to meet healing thresholds (<30–50% in 4 weeks)
-- Identify incorrect or missing debridement type, justification, wound description, plan of care, pain, infection, graft use, and SMART goals
+- Identify incorrect or missing:
+  - Debridement type, justification, depth, and tools
+  - Wound dimensions, drainage, pain, necrosis, tunneling, exudate
+  - SMART goals and measurable progress
+  - Use and documentation of biophysical modalities (MIST, NPWT, ES)
+  - Dressing appropriateness (e.g., hydrogel on eschar)
+  - Therapist documentation (every 10 days)
+  - Pre/post photos for prolonged debridement
+  - Clear medical necessity and plan modifications if no healing occurs
+  - Pathology reports when deep tissue removed
+
+If multiple notes are uploaded:
+- Evaluate consistency across all notes
+- Highlight contradictions in wound progression, debridement details, documentation standards, or care plans
+- Identify where updates are needed for consistency
+- Provide examples from other notes that are compliant or inconsistent
+- Offer suggestions to make all notes aligned and CMS-compliant
+- Output a visual table of consistency by category if appropriate
 
 OUTPUT FORMAT:
 =====
@@ -97,15 +138,22 @@ Section 1: What is Documented Correctly
 - Bullet points
 
 Section 2: What is Missing or Non-Compliant
-- Labeled by category (e.g., Debridement, Conservative Care, Infection)
+- Labeled by category (e.g., Debridement, Dressing, Biophysical Modalities)
 - What is wrong
-- Why it's non-compliant (with LCD reference if possible)
+- Why it's non-compliant (with LCD/article reference if possible)
 
 Section 3: Suggested Fixes and CMS Justified Corrections
 1. Problem – Suggested Rewording
 2. ...
 
-Section 4: Final CMS Compliance Rating (Compliant / Partially Compliant / Non-Compliant)
+Section 4: Inconsistencies Between Notes
+- What is inconsistent
+- Example of note(s) that meet standard
+- Example of note(s) that fall short
+- How to harmonize and resolve differences
+- Highlight these areas clearly for provider revision
+
+Section 5: Final CMS Compliance Rating (Compliant / Partially Compliant / Non-Compliant)
 =====
 '''
     if compare:
@@ -123,7 +171,7 @@ if st.button("Run Audit", type="primary") and notes:
         result = response.choices[0].message.content
         st.markdown(result)
 
-        path = generate_pdf(result)
-        with open(path, "rb") as f:
+        combined_pdf_path = generate_combined_pdf(pd.DataFrame(note_summary, columns=["File Name", "Patient", "Date of Visit", "Provider", "Facility"]), result)
+        with open(combined_pdf_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-            st.markdown(f'<a href="data:application/octet-stream;base64,{b64}" download="CMS_LCD_Wound_Audit_Report.pdf">Download PDF Report</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="data:application/octet-stream;base64,{b64}" download="Combined_Wound_Audit_Report.pdf">Download Combined PDF Report</a>', unsafe_allow_html=True)
